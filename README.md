@@ -1,4 +1,4 @@
-# Auto-updating Toronto Airbnb Market Dashboard
+# Self-updating Toronto Airbnb Market Dashboard
 
 **Live demo →** [toronto-airbnb-dashboard.vercel.app](https://toronto-airbnb-dashboard.vercel.app)
 
