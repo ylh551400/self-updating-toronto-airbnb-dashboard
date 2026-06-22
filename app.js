@@ -871,6 +871,20 @@ async function boot() {
   document.getElementById('occ-med').textContent    = Math.round(DATA.thresholds.occupancy_median) + ' nights';
   document.getElementById('rating-med').textContent = DATA.thresholds.rating_median.toFixed(2);
 
+  // Dynamic subtitle
+  const computedAt = medians.find(m => m.computed_at)?.computed_at;
+  const snapDate = computedAt
+    ? new Date(computedAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : '';
+  const subEl = document.getElementById('hero-sub');
+  if (subEl) {
+    subEl.textContent =
+      `${DATA.kpi.total_listings.toLocaleString()} active listings across ` +
+      `${DATA.kpi.neighbourhoods} neighbourhoods, split into four market quadrants ` +
+      `by citywide median occupancy and rating.` +
+      (snapDate ? ` Data: Inside Airbnb, ${snapDate}.` : '');
+  }
+
   renderKPI();
   renderInsights();
   renderLegend();
