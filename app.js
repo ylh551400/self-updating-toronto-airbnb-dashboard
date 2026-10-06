@@ -5,7 +5,7 @@ const SUPABASE_URL = 'https://baverhpocmbaetkzdbbj.supabase.co/rest/v1';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhdmVyaHBvY21iYWV0a3pkYmJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTQzNzksImV4cCI6MjA4OTUzMDM3OX0.0cTugi1-M_hdUlR2EV97gdadu04Qi3V8nUGbaF8x270';
 
 // CARTO basemap tiles require an API key (https://carto.com/basemaps/apikey)
-const CARTO_KEY = '';
+const CARTO_KEY = 'cb1_4b85_1_3167c21338289aab45e66048';
 
 async function fetchTable(table, params = '') {
   const res = await fetch(`${SUPABASE_URL}/${table}?${params}`, {
