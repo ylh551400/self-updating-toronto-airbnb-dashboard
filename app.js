@@ -4,6 +4,9 @@
 const SUPABASE_URL = 'https://baverhpocmbaetkzdbbj.supabase.co/rest/v1';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhdmVyaHBvY21iYWV0a3pkYmJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTQzNzksImV4cCI6MjA4OTUzMDM3OX0.0cTugi1-M_hdUlR2EV97gdadu04Qi3V8nUGbaF8x270';
 
+// CARTO basemap tiles require an API key (https://carto.com/basemaps/apikey)
+const CARTO_KEY = '';
+
 async function fetchTable(table, params = '') {
   const res = await fetch(`${SUPABASE_URL}/${table}?${params}`, {
     headers: { apikey: SUPABASE_KEY, Accept: 'application/json' },
@@ -739,7 +742,8 @@ function renderLeaderboards() {
 function buildMap() {
   map = L.map('map', { zoomControl: true, attributionControl: false, preferCanvas: true })
     .setView([43.705, -79.4], 11);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+  const cartoKey = CARTO_KEY ? `?key=${encodeURIComponent(CARTO_KEY)}` : '';
+  L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${cartoKey}`, { maxZoom: 18 }).addTo(map);
   L.control.attribution({ position: 'bottomright', prefix: false }).addAttribution('© OSM © CARTO').addTo(map);
 
   drawNeighbourhoods();
