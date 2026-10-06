@@ -743,7 +743,7 @@ function buildMap() {
   map = L.map('map', { zoomControl: true, attributionControl: false, preferCanvas: true })
     .setView([43.705, -79.4], 11);
   const cartoKey = CARTO_KEY ? `?key=${encodeURIComponent(CARTO_KEY)}` : '';
-  L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${cartoKey}`, { maxZoom: 18 }).addTo(map);
+  L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png${cartoKey}`, { maxZoom: 18 }).addTo(map);
   L.control.attribution({ position: 'bottomright', prefix: false }).addAttribution('© OSM © CARTO').addTo(map);
 
   drawNeighbourhoods();
