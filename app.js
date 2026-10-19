@@ -47,7 +47,7 @@ function quadrantColor(q, muted = false) {
 
 // ─── Data builder ────────────────────────────────────────────────────────────
 // Reshapes the 7 Supabase tables into the DATA object consumed by every chart.
-function buildDataObject(nbhds, monthly, roomTypes, roomCity, amenities, propTypes, leaderboardRows, medians) {
+function buildDataObject(nbhds, monthly, roomTypes, roomCity, amenityBins, propTypes, leaderboardRows, medians) {
 
   // Thresholds
   const medOcc    = medians.find(m => m.metric === 'median_occupancy')?.value ?? 0;
@@ -102,18 +102,15 @@ function buildDataObject(nbhds, monthly, roomTypes, roomCity, amenities, propTyp
     };
   });
 
-  // Amenity impact
-  const amenity_impact = amenities.slice(0, 30).map(a => ({
-    name:       a.amenity_name,
-    avg_rating: a.avg_rating            || 0,
-    avg_rpm:    a.avg_reviews_per_month || 0,
-    share:      (a.prevalence_pct || 0) / 100,
-    count:      a.listing_count         || 0,
+  // Amenity count — listings grouped by how many amenities they list (pipeline-computed)
+  const amenity_count = amenityBins.map(r => ({
+    name:             `${r.bin_label} amenities`,
+    listings:         r.listing_count     || 0,
+    rated:            r.rated_count       || 0,
+    median_occupancy: r.median_occupancy  ?? 0,
+    avg_rating:       r.avg_rating        ?? 0,
+    avg_rpm:          r.reviews_per_month ?? 0,
   }));
-  const amenity_baseline = {
-    avg_rating: amenity_impact.reduce((s, a) => s + a.avg_rating, 0) / (amenity_impact.length || 1),
-    avg_rpm:    amenity_impact.reduce((s, a) => s + a.avg_rpm,    0) / (amenity_impact.length || 1),
-  };
 
   // Room type stats — computed citywide from listings in the pipeline (true median, nulls skipped)
   const room_type_stats = roomCity.map(r => ({
@@ -180,7 +177,7 @@ function buildDataObject(nbhds, monthly, roomTypes, roomCity, amenities, propTyp
     kpi, neighbourhoods,
     thresholds: { occupancy_median: medOcc, rating_median: medRating },
     room_composition, radar,
-    amenity_impact, amenity_baseline,
+    amenity_count,
     room_type_stats, property_type_stats,
     trend,
     leaderboards: {
@@ -459,95 +456,22 @@ function updateQuadrantVisibility() {
   charts.scatter.update(); charts.radar.update();
 }
 
-// ─── Amenity impact (bubble: rating × reviews/month) ─────────────────────────
-function buildAmenity() {
-  const ctx   = document.getElementById('amenity');
-  const items = DATA.amenity_impact;
-  const base  = DATA.amenity_baseline;
-
-  const points = items.map(a => ({
-    x: a.avg_rating, y: a.avg_rpm,
-    r: Math.sqrt(a.share * 100) * 3 + 4,
-    amen: a,
-  }));
-
-  const labelPlugin = {
-    id: 'amenLabels',
-    afterDatasetsDraw(chart) {
-      const { ctx, data } = chart;
-      ctx.save(); ctx.fillStyle = TEXT; ctx.font = '11px Inter';
-      data.datasets[0].data.forEach((p, i) => {
-        const meta = chart.getDatasetMeta(0).data[i];
-        if (!meta) return;
-        ctx.fillText(p.amen.name, meta.x + meta.options.radius + 4, meta.y + 3);
-      });
-      ctx.restore();
-    },
-  };
-
-  const baselinePlugin = {
-    id: 'amenBaseline',
-    beforeDatasetsDraw(chart) {
-      const { ctx, chartArea, scales } = chart;
-      ctx.save();
-      ctx.strokeStyle = TEXT_2; ctx.setLineDash([4,4]); ctx.lineWidth = 1;
-      const xb = scales.x.getPixelForValue(base.avg_rating);
-      ctx.beginPath(); ctx.moveTo(xb, chartArea.top); ctx.lineTo(xb, chartArea.bottom); ctx.stroke();
-      const yb = scales.y.getPixelForValue(base.avg_rpm);
-      ctx.beginPath(); ctx.moveTo(chartArea.left, yb); ctx.lineTo(chartArea.right, yb); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = TEXT_2; ctx.font = '11px Inter';
-      ctx.fillText(`avg rating ${base.avg_rating.toFixed(2)}`, xb + 6, chartArea.bottom - 6);
-      ctx.fillText(`avg ${base.avg_rpm.toFixed(2)} rev/mo`, chartArea.left + 8, yb - 6);
-      ctx.restore();
-    },
-  };
-
-  charts.amenity = new Chart(ctx, {
-    type: 'bubble',
-    data: {
-      datasets: [{ label: 'Amenity', data: points, backgroundColor: COLORS.Q1 + 'AA', borderColor: COLORS.Q1, borderWidth: 1 }],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { title: { display: true, text: 'Avg rating of listings with this amenity', color: TEXT_2 }, grid: { color: LINE }, ticks: { color: TEXT_2 } },
-        y: { title: { display: true, text: 'Avg reviews / month (booking proxy)', color: TEXT_2 }, grid: { color: LINE }, ticks: { color: TEXT_2 } },
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#000', borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
-          callbacks: {
-            title: items => items[0].raw.amen.name,
-            label: i => {
-              const a = i.raw.amen;
-              return [
-                `Listings: ${fmtInt(a.count)} (${(a.share * 100).toFixed(1)}%)`,
-                `Avg rating: ${a.avg_rating.toFixed(2)}`,
-                `Avg rev/mo: ${a.avg_rpm.toFixed(2)}`,
-              ];
-            },
-          },
-        },
-      },
-    },
-    plugins: [baselinePlugin, labelPlugin],
-  });
-}
-
-// ─── Room type comparison ─────────────────────────────────────────────────────
+// ─── Metric bars (room type, amenity count) ───────────────────────────────────
 // Plain HTML bars with real values. Each metric has its own fixed scale
 // (occupancy out of 365 nights, rating out of 5) so bar length means something.
-function buildRoomStats() {
-  const rows = DATA.room_type_stats;
-  const maxRpm = Math.ceil(Math.max(...rows.map(r => r.avg_rpm), 1));
-  const SMALL_SAMPLE = 100;
-  const metrics = [
-    { key: 'median_occupancy', label: 'Median occupancy', scale: 'nights / yr, of 365', max: 365,    color: '#F5D547', fmt: v => `${Math.round(v)}` },
-    { key: 'avg_rating',       label: 'Avg rating',       scale: 'out of 5',            max: 5,      color: COLORS.Q1, fmt: v => v.toFixed(2) },
-    { key: 'avg_rpm',          label: 'Reviews / month',  scale: `avg, 0–${maxRpm}`,    max: maxRpm, color: COLORS.Q3, fmt: v => v.toFixed(2) },
-  ];
+const BAR_METRICS = {
+  occupancy: { key: 'median_occupancy', label: 'Median occupancy', scale: 'nights / yr, of 365', max: () => 365, color: '#F5D547', fmt: v => `${Math.round(v)}` },
+  rating:    { key: 'avg_rating',       label: 'Avg rating',       scale: 'out of 5',            max: () => 5,   color: COLORS.Q1, fmt: v => v.toFixed(2) },
+  rpm:       { key: 'avg_rpm',          label: 'Reviews / month',  max: rows => Math.ceil(Math.max(...rows.map(r => r.avg_rpm), 1)),
+               scale: max => `avg, 0–${max}`, color: COLORS.Q3, fmt: v => v.toFixed(2) },
+};
+
+function renderMetricBars(el, rows, metricNames, { smallSample = 0 } = {}) {
+  const metrics = metricNames.map(n => {
+    const m = BAR_METRICS[n];
+    const max = m.max(rows);
+    return { ...m, max, scale: typeof m.scale === 'function' ? m.scale(max) : m.scale };
+  });
   const head = `
     <div class="rs-row rs-head">
       <div></div>
@@ -557,7 +481,7 @@ function buildRoomStats() {
     <div class="rs-row">
       <div class="rs-name">
         <div>${r.name}</div>
-        <div class="rs-count">${fmtInt(r.listings)} listings${r.listings < SMALL_SAMPLE ? ' · <span class="rs-flag">small sample</span>' : ''}</div>
+        <div class="rs-count">${fmtInt(r.listings)} listings${r.listings < smallSample ? ' · <span class="rs-flag">small sample</span>' : ''}</div>
       </div>
       ${metrics.map(m => `
         <div class="rs-cell" title="${m.label}: ${m.fmt(r[m.key])}${m.key === 'avg_rating' ? ` (${fmtInt(r.rated)} rated listings)` : ''}">
@@ -565,7 +489,17 @@ function buildRoomStats() {
           <div class="rs-track"><div class="rs-fill" style="width:${Math.min(r[m.key] / m.max, 1) * 100}%;background:${m.color}"></div></div>
         </div>`).join('')}
     </div>`).join('');
-  document.getElementById('roomStats').innerHTML = head + body;
+  el.innerHTML = head + body;
+}
+
+function buildRoomStats() {
+  renderMetricBars(document.getElementById('roomStats'), DATA.room_type_stats,
+    ['occupancy', 'rating', 'rpm'], { smallSample: 100 });
+}
+
+function buildAmenity() {
+  renderMetricBars(document.getElementById('amenity'), DATA.amenity_count,
+    ['occupancy', 'rpm', 'rating']);
 }
 
 // ─── Property type bubble ─────────────────────────────────────────────────────
@@ -841,19 +775,19 @@ function updateFilterViews() {
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
-  const [nbhds, monthly, roomTypes, roomCity, amenities, propTypes, leaderboardRows, medians, geo] = await Promise.all([
+  const [nbhds, monthly, roomTypes, roomCity, amenityBins, propTypes, leaderboardRows, medians, geo] = await Promise.all([
     fetchTable('neighbourhoods',    'select=*'),
     fetchTable('monthly_totals',    'select=*&order=month.asc'),  // pre-aggregated, ~32 rows
     fetchTable('room_type_stats',   'select=*&limit=5000'),
     fetchTable('room_type_citywide','select=*&order=listing_count.desc'),
-    fetchTable('amenity_stats',     'select=*&order=prevalence_pct.desc&limit=500'),
+    fetchTable('amenity_count_stats','select=*&order=bin_order.asc'),
     fetchTable('property_type_stats','select=*&order=listing_count.desc'),
     fetchTable('leaderboards',      'select=*&order=rank.asc'),
     fetchTable('citywide_medians',  'select=*'),
     fetch('rawdata_new/neighbourhoods.geojson').then(r => r.json()),
   ]);
 
-  DATA = buildDataObject(nbhds, monthly, roomTypes, roomCity, amenities, propTypes, leaderboardRows, medians);
+  DATA = buildDataObject(nbhds, monthly, roomTypes, roomCity, amenityBins, propTypes, leaderboardRows, medians);
   GEO  = geo;
 
   // Populate inline medians display

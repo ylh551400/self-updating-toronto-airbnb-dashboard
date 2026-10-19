@@ -17,7 +17,7 @@ Every neighbourhood is scored on two axes — **occupancy** (estimated nights bo
 | Q3 Hidden Gem | < median | ≥ median | Well-reviewed but underdiscovered |
 | Q4 Struggling | < median | < median | Low demand and low satisfaction |
 
-The dashboard also surfaces amenity impact on bookings, room type composition, property type comparisons, a 3-year monthly activity trend, and neighbourhood leaderboards.
+The dashboard also compares listing performance by number of amenities listed, room type composition, property type comparisons, a 3-year monthly activity trend, and neighbourhood leaderboards.
 
 ---
 
@@ -57,15 +57,16 @@ Inside Airbnb CSV  (manual download, quarterly)
 
 ## Database schema
 
-Eight Postgres tables hold all pre-computed results. The frontend reads directly via Supabase's auto-generated REST API. No custom backend needed.
+Nine Postgres tables hold all pre-computed results. The frontend reads directly via Supabase's auto-generated REST API. No custom backend needed.
 
 | Table | Rows | Purpose |
 |---|---|---|
 | `neighbourhoods` | 140 | Core quadrant data, coordinates, aggregated metrics |
-| `monthly_activity` | 4,442 | Neighbourhood × month time-series (review & occupancy) |
-| `monthly_totals` | 32 | Citywide monthly aggregates — used by the trend chart |
-| `room_type_stats` | 303 | Neighbourhood × room type breakdown |
-| `amenity_stats` | 193 | Per-amenity prevalence, rating, and booking proxy |
+| `monthly_activity` | 4,861 | Neighbourhood × month time-series (review & occupancy) |
+| `monthly_totals` | 35 | Citywide monthly aggregates — used by the trend chart |
+| `room_type_stats` | 316 | Neighbourhood × room type breakdown |
+| `room_type_citywide` | 4 | Citywide stats per room type (true median, nulls excluded) |
+| `amenity_count_stats` | 6 | Listing performance grouped by number of amenities listed |
 | `property_type_stats` | 8 | Top 8 property types by supply |
 | `leaderboards` | 30 | Pre-ranked top-10 lists for three categories |
 | `citywide_medians` | 2 | Reference values that define the quadrant split lines |

@@ -17,14 +17,13 @@ BATCH_SIZE = 500  # max rows per REST request
 # Tables with a natural unique key → use upsert (insert or update on conflict)
 UPSERT_ON = {
     "neighbourhoods":      "neighbourhood_id",
-    "amenity_stats":       "amenity_name",
     "property_type_stats": "property_type",
     "citywide_medians":    "metric",
     "monthly_totals":      "month",
 }
 
 # Tables with auto-increment id → delete-all then bulk-insert (simpler & idempotent)
-DELETE_INSERT = {"monthly_activity", "room_type_stats", "room_type_citywide", "leaderboards"}
+DELETE_INSERT = {"monthly_activity", "room_type_stats", "room_type_citywide", "amenity_count_stats", "leaderboards"}
 
 # Load order: tables referenced by FK must come first
 LOAD_ORDER = [
@@ -34,7 +33,7 @@ LOAD_ORDER = [
     "monthly_totals",
     "room_type_stats",
     "room_type_citywide",
-    "amenity_stats",
+    "amenity_count_stats",
     "property_type_stats",
     "leaderboards",
 ]

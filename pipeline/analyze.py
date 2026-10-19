@@ -50,7 +50,7 @@ def analyze(listings: pd.DataFrame, reviews: pd.DataFrame) -> dict:
     tables["monthly_totals"]      = _monthly_totals(tables["monthly_activity"])
     tables["room_type_stats"]     = _room_type_stats(listings)
     tables["room_type_citywide"]  = _room_type_citywide(listings)
-    tables["amenity_stats"]       = _amenity_stats(listings)
+    tables["amenity_count_stats"] = _amenity_count_stats(listings)
     tables["property_type_stats"] = _property_type_stats(listings)
     tables["leaderboards"]        = _leaderboards(tables["neighbourhoods"])
 
@@ -184,38 +184,39 @@ def _room_type_citywide(df: pd.DataFrame) -> pd.DataFrame:
     return agg
 
 
-def _amenity_stats(df: pd.DataFrame) -> pd.DataFrame:
-    total_listings = len(df)
-    work = df[["id", "review_scores_rating", "reviews_per_month", "amenities"]].copy()
-    work["amenity_list"] = work["amenities"].apply(_parse_amenities)
+# Bins for "how many amenities does the listing list". Edges are inclusive.
+AMENITY_COUNT_BINS = [(0, 15), (16, 25), (26, 35), (36, 45), (46, 60), (61, None)]
 
-    exploded = work.explode("amenity_list").rename(columns={"amenity_list": "amenity_name"})
-    exploded = exploded[
-        exploded["amenity_name"].notna()
-        & (exploded["amenity_name"].str.strip() != "")
-    ].copy()
-    exploded["amenity_name"] = exploded["amenity_name"].str.strip()
 
-    agg = (
-        exploded.groupby("amenity_name")
-        .agg(
-            listing_count        =("id",                   "nunique"),
-            avg_rating           =("review_scores_rating", "mean"),
-            avg_reviews_per_month=("reviews_per_month",    "mean"),
-        )
-        .reset_index()
-    )
-    agg["prevalence_pct"] = (agg["listing_count"] / total_listings * 100).round(2)
-    for col in ["avg_rating", "avg_reviews_per_month"]:
-        agg[col] = agg[col].round(4)
-
-    # Keep amenities present in at least 1 % of listings
-    agg = agg[agg["prevalence_pct"] >= 1.0].sort_values(
-        "prevalence_pct", ascending=False
-    ).reset_index(drop=True)
-
-    return agg[["amenity_name", "prevalence_pct", "avg_rating",
-                "avg_reviews_per_month", "listing_count"]]
+def _amenity_count_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """Listing performance grouped by how many amenities each listing lists.
+    Per-amenity averages are misleading (listings overlap, and labels like
+    "Heating" vs "Central heating" fragment), so we compare by count instead.
+    This is a correlation: hosts who fill in more amenities tend to run
+    more complete, more active listings.
+    """
+    n_am = df["amenities"].apply(lambda raw: len(_parse_amenities(raw)))
+    rows = []
+    for order, (lo, hi) in enumerate(AMENITY_COUNT_BINS):
+        mask = (n_am >= lo) & (n_am <= hi) if hi is not None else (n_am >= lo)
+        g = df[mask]
+        rows.append({
+            "bin_label":         f"{lo}–{hi}" if hi is not None else f"{lo}+",
+            "bin_order":         order,
+            "min_amenities":     lo,
+            "max_amenities":     hi,
+            "listing_count":     int(len(g)),
+            "rated_count":       int(g["review_scores_rating"].count()),
+            "median_occupancy":  g["estimated_occupancy_l365d"].median(),
+            "avg_rating":        g["review_scores_rating"].mean(),
+            "reviews_per_month": g["reviews_per_month"].mean(),
+        })
+    out = pd.DataFrame(rows)
+    # Keep ints (and None for the open-ended last bin) — pandas would make this float
+    out["max_amenities"] = pd.Series([r["max_amenities"] for r in rows], dtype=object)
+    for col in ["median_occupancy", "avg_rating", "reviews_per_month"]:
+        out[col] = out[col].round(4)
+    return out
 
 
 def _property_type_stats(df: pd.DataFrame) -> pd.DataFrame:
