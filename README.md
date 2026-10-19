@@ -107,5 +107,5 @@ The pipeline runs in GitHub Actions, not inside the database. Keeping logic in P
 ## Data
 
 Source: [Inside Airbnb — Toronto](http://insideairbnb.com/toronto)
-Snapshot date: January 2026
-Listings: 15,776 active | Neighbourhoods: 140 | Reviews: 543,448
+Snapshot date: September 2026
+
