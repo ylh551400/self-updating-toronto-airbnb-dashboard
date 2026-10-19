@@ -2,7 +2,7 @@
 
 **Live demo →** [toronto-airbnb-dashboard.vercel.app](https://toronto-airbnb-dashboard.vercel.app)
 
-A data pipeline and interactive dashboard that maps 15,776 Toronto Airbnb listings across 140 neighbourhoods into four market quadrants. Built as a portfolio project to demonstrate end-to-end data engineering, from raw CSV to live, auto-updating web product.
+A data pipeline and interactive dashboard that maps 22,050 Toronto Airbnb listings across 140 neighbourhoods into four market quadrants. Built as a portfolio project to demonstrate end-to-end data engineering, from raw CSV to live, auto-updating web product.
 
 ---
 
@@ -40,7 +40,7 @@ Inside Airbnb CSV  (manual download, quarterly)
         ▼
 ┌─────────────────────────────────────┐
 │  Supabase  (Postgres + REST API)    │
-│  8 tables, all pre-computed         │
+│  9 tables, all pre-computed         │
 └─────────────────────────────────────┘
         │
         │  fetch() on page load  (anon key, safe to expose)
@@ -51,7 +51,7 @@ Inside Airbnb CSV  (manual download, quarterly)
 └─────────────────────────────────────┘
 ```
 
-**Update cycle:** Drop new CSVs into `rawdata_new/`, push. GitHub Actions handles the rest. No server to maintain; entire stack runs on free tiers.
+**Update cycle:** Drop new CSVs into `rawdata_new/`, push. GitHub Actions handles the rest. `reviews.csv` only needs the `listing_id` and `date` columns. Trim it to those before pushing so it stays under GitHub's 100 MB file limit. `calendar.csv` isn't used and is gitignored. No server to maintain; entire stack runs on free tiers.
 
 ---
 
@@ -81,10 +81,13 @@ Row-level security is enabled on every table with a public-read policy. The pipe
 Inside Airbnb removed price data from their public dataset in 2025. Rather than approximate price from third-party sources, I pivoted the quadrant axis to occupancy (estimated nights booked per year), which is arguably a more direct signal of market performance anyway. The quadrant model stays logically coherent. It just answers "who's busy and well-reviewed" instead of "who's expensive and well-reviewed".
 
 **Why compute quadrant medians from neighbourhood aggregates, not raw listings?**
-Airbnb's rating system is heavily inflated at the listing level, the citywide median rating across 15,776 listings is 4.9, which would place almost every neighbourhood *below* the median. Instead, the pipeline first aggregates to neighbourhood-level averages, then takes the median of those 140 values (4.81). This produces a balanced four-way split.
+Airbnb's rating system is heavily inflated at the listing level, the citywide median rating across 22,050 listings is 4.9, which would place almost every neighbourhood *below* the median. Instead, the pipeline first aggregates to neighbourhood-level averages, then takes the median of those 140 values (4.79). This produces a balanced four-way split.
 
 **Why a `monthly_totals` pre-aggregation table?**
-Supabase's free tier enforces a 1,000-row hard limit per API response. The `monthly_activity` table has 4,442 rows (140 neighbourhoods × 32 months). Fetching it in chunks would require sequential paginated requests, which slows page load and complicates client code. Pre-aggregating to one row per month reduces the payload to 32 rows and makes the frontend code simpler.
+Supabase's free tier enforces a 1,000-row hard limit per API response. The `monthly_activity` table has 4,861 rows (140 neighbourhoods × up to 36 months). Fetching it in chunks would require sequential paginated requests, which slows page load and complicates client code. Pre-aggregating to one row per month reduces the payload to 35 rows and makes the frontend code simpler.
+
+**Why compare amenity counts instead of individual amenities?**
+A listing typically has 30 to 50 amenities, so "average of listings with amenity X" mostly measures the same listings over and over. Labels also fragment: "Heating" and "Central heating" are separate tags, which made heating look like it hurt bookings. Grouping listings by how many amenities they list gives a clean, readable signal: more complete listings get more bookings and better ratings. It's presented as a correlation, not cause and effect.
 
 **Why keep all computation in Python rather than SQL views?**
 The pipeline runs in GitHub Actions, not inside the database. Keeping logic in Python (pandas) makes it easier to test locally, version-control, and reason about without needing a live DB connection. The tradeoff is slightly more code, but the testability is worth it for a project that updates on a push-triggered schedule.
