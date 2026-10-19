@@ -1,6 +1,7 @@
 # Don't deploy raw data or pipeline scripts to Vercel
 # (they're only used by GitHub Actions)
-rawdata_new/
+rawdata_new/*
+!rawdata_new/neighbourhoods.geojson
 pipeline/
 .env
 .env.example

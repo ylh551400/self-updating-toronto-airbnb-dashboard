@@ -18,3 +18,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Calendar data — too large for GitHub (>100MB), not used by the pipeline
+rawdata_new/calendar.csv

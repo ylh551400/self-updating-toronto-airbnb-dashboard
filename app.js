@@ -865,7 +865,7 @@ async function boot() {
     fetchTable('property_type_stats','select=*&order=listing_count.desc'),
     fetchTable('leaderboards',      'select=*&order=rank.asc'),
     fetchTable('citywide_medians',  'select=*'),
-    fetch('neighbourhoods.geojson').then(r => r.json()),
+    fetch('rawdata_new/neighbourhoods.geojson').then(r => r.json()),
   ]);
 
   DATA = buildDataObject(nbhds, monthly, roomTypes, amenities, propTypes, leaderboardRows, medians);
