@@ -137,6 +137,7 @@ body {
   letter-spacing: -0.01em;
 }
 .kpi-unit { color: var(--text-2); font-size: 16px; margin-left: 4px; }
+.kpi-note { color: var(--text-2); font-size: 11px; margin-top: 6px; line-height: 1.4; }
 
 /* Legend */
 .legend {
@@ -248,7 +249,7 @@ body {
 /* Insights */
 .insights {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
 .insight {

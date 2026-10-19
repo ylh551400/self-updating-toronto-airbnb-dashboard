@@ -204,21 +204,27 @@ function buildDataObject(nbhds, monthly, roomTypes, amenities, propTypes, leader
 function generateInsights(nbhds, kpi, medOcc, medRating) {
   const q1 = nbhds.filter(n => n.quadrant === 'Q1');
   const q3 = nbhds.filter(n => n.quadrant === 'Q3');
-  const topOcc  = [...nbhds].sort((a,b) => b.estimated_occupancy - a.estimated_occupancy)[0];
+  // Rank by median occupancy — the same metric the quadrant split uses
+  const topOcc  = [...nbhds].sort((a,b) => b.median_occupancy - a.median_occupancy)[0];
   const topRated = [...nbhds].filter(n => n.listings >= 30).sort((a,b) => b.avg_rating - a.avg_rating)[0];
   const biggest  = [...nbhds].sort((a,b) => b.listings - a.listings)[0];
+  const qLabel = q => `${q} (${QUADRANT_LABELS[q]})`;
   return [
     {
-      title: `${q1.length} Star neighbourhoods — above-median occupancy and rating`,
-      body: `${q1.length} of 140 neighbourhoods land in Q1 (Star): more than ${Math.round(medOcc)} occupied nights/year AND a rating above ${medRating.toFixed(2)}.${topOcc ? ` ${topOcc.name} leads all neighbourhoods with ${Math.round(topOcc.estimated_occupancy)} avg occupied nights/year.` : ''}`,
+      title: `${q1.length} Star neighbourhoods — at or above median on occupancy and rating`,
+      body: `${q1.length} of ${nbhds.length} neighbourhoods land in Q1 (Star): a median of at least ${Math.round(medOcc)} occupied nights/year AND an average rating of at least ${medRating.toFixed(2)}.${topOcc ? ` Across all neighbourhoods, ${topOcc.name} has the highest median occupancy at ${Math.round(topOcc.median_occupancy)} nights/year, in ${qLabel(topOcc.quadrant)}.` : ''}`,
     },
     {
       title: `${q3.length} Hidden Gems — high ratings, room to grow on bookings`,
-      body: `Q3 neighbourhoods are above the ${medRating.toFixed(2)} rating median but below ${Math.round(medOcc)} occupied nights/year. They are well-reviewed but relatively undiscovered — the strongest opportunity for hosts who already deliver quality.`,
+      body: `Q3 neighbourhoods have an average rating at or above the ${medRating.toFixed(2)} median but a median occupancy below ${Math.round(medOcc)} nights/year. They are well-reviewed but relatively undiscovered — the strongest opportunity for hosts who already deliver quality.`,
     },
     {
       title: `${biggest?.name || 'Downtown'} dominates supply competition`,
-      body: `${biggest ? `${biggest.name} has the most listings (${fmtInt(biggest.listings)}) of any single neighbourhood, in quadrant ${biggest.quadrant} (${QUADRANT_LABELS[biggest.quadrant]}).` : ''} ${topRated ? `For ratings, ${topRated.name} leads at ${topRated.avg_rating.toFixed(2)} / 5 (min 30 listings).` : ''}`,
+      body: biggest ? `${biggest.name} has the most listings of any single neighbourhood (${fmtInt(biggest.listings)}, ${Math.round(biggest.listings / kpi.total_listings * 100)}% of the city), in ${qLabel(biggest.quadrant)}.` : '',
+    },
+    {
+      title: `${topRated?.name || '—'} is the highest-rated neighbourhood`,
+      body: topRated ? `Among neighbourhoods with at least 30 listings, ${topRated.name} has the highest average rating at ${topRated.avg_rating.toFixed(2)} / 5 across ${fmtInt(topRated.listings)} listings, in ${qLabel(topRated.quadrant)}.` : '',
     },
   ];
 }
@@ -229,13 +235,16 @@ function renderKPI() {
   const items = [
     { label: 'Total listings',         value: fmtInt(k.total_listings) },
     { label: 'Active neighbourhoods',  value: fmtInt(k.neighbourhoods) },
-    { label: 'Median occupancy',       value: fmtNights(k.median_occupancy) },
-    { label: 'Avg rating',             value: k.avg_rating.toFixed(2), unit: ' / 5' },
+    { label: 'Median occupancy',       value: fmtNights(k.median_occupancy),
+      note: `Median of ${k.neighbourhoods} neighbourhood medians · quadrant split line` },
+    { label: 'Avg rating',             value: k.avg_rating.toFixed(2), unit: ' / 5',
+      note: `Mean of ${k.neighbourhoods} neighbourhood averages · split line uses the median, ${DATA.thresholds.rating_median.toFixed(2)}` },
   ];
   document.getElementById('kpi-row').innerHTML = items.map(i => `
     <div class="kpi">
       <div class="kpi-label">${i.label}</div>
       <div class="kpi-value">${i.value}${i.unit ? `<span class="kpi-unit">${i.unit}</span>` : ''}</div>
+      ${i.note ? `<div class="kpi-note">${i.note}</div>` : ''}
     </div>
   `).join('');
 }
