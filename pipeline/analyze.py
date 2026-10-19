@@ -49,6 +49,7 @@ def analyze(listings: pd.DataFrame, reviews: pd.DataFrame) -> dict:
     tables["monthly_activity"]    = _monthly_activity(reviews, listings)
     tables["monthly_totals"]      = _monthly_totals(tables["monthly_activity"])
     tables["room_type_stats"]     = _room_type_stats(listings)
+    tables["room_type_citywide"]  = _room_type_citywide(listings)
     tables["amenity_stats"]       = _amenity_stats(listings)
     tables["property_type_stats"] = _property_type_stats(listings)
     tables["leaderboards"]        = _leaderboards(tables["neighbourhoods"])
@@ -154,6 +155,29 @@ def _room_type_stats(df: pd.DataFrame) -> pd.DataFrame:
             reviews_per_month=("reviews_per_month",         "mean"),
         )
         .reset_index()
+    )
+    for col in ["median_occupancy", "avg_rating", "reviews_per_month"]:
+        agg[col] = agg[col].round(4)
+    return agg
+
+
+def _room_type_citywide(df: pd.DataFrame) -> pd.DataFrame:
+    """Citywide stats per room type, computed from listings directly.
+    Unlike re-weighting room_type_stats, this gives a true median, and
+    pandas' median/mean skip nulls (e.g. listings with no rating yet).
+    """
+    agg = (
+        df.groupby("room_type")
+        .agg(
+            listing_count    =("id",                        "count"),
+            rated_count      =("review_scores_rating",      "count"),
+            median_occupancy =("estimated_occupancy_l365d", "median"),
+            avg_rating       =("review_scores_rating",      "mean"),
+            reviews_per_month=("reviews_per_month",         "mean"),
+        )
+        .reset_index()
+        .sort_values("listing_count", ascending=False)
+        .reset_index(drop=True)
     )
     for col in ["median_occupancy", "avg_rating", "reviews_per_month"]:
         agg[col] = agg[col].round(4)

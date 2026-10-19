@@ -47,7 +47,7 @@ function quadrantColor(q, muted = false) {
 
 // ─── Data builder ────────────────────────────────────────────────────────────
 // Reshapes the 7 Supabase tables into the DATA object consumed by every chart.
-function buildDataObject(nbhds, monthly, roomTypes, amenities, propTypes, leaderboardRows, medians) {
+function buildDataObject(nbhds, monthly, roomTypes, roomCity, amenities, propTypes, leaderboardRows, medians) {
 
   // Thresholds
   const medOcc    = medians.find(m => m.metric === 'median_occupancy')?.value ?? 0;
@@ -115,24 +115,15 @@ function buildDataObject(nbhds, monthly, roomTypes, amenities, propTypes, leader
     avg_rpm:    amenity_impact.reduce((s, a) => s + a.avg_rpm,    0) / (amenity_impact.length || 1),
   };
 
-  // Room type stats — weighted average across all neighbourhoods
-  const rtAgg = {};
-  roomTypes.forEach(r => {
-    const cnt = r.listing_count || 0;
-    if (!rtAgg[r.room_type]) rtAgg[r.room_type] = { cnt:0, occ:0, rat:0, rpm:0 };
-    rtAgg[r.room_type].cnt += cnt;
-    rtAgg[r.room_type].occ += (r.median_occupancy  || 0) * cnt;
-    rtAgg[r.room_type].rat += (r.avg_rating        || 0) * cnt;
-    rtAgg[r.room_type].rpm += (r.reviews_per_month || 0) * cnt;
-  });
-  const room_type_stats = Object.entries(rtAgg)
-    .map(([name, v]) => ({
-      name,
-      median_occupancy:  v.cnt ? v.occ / v.cnt : 0,
-      avg_rating:        v.cnt ? v.rat / v.cnt : 0,
-      avg_rpm:           v.cnt ? v.rpm / v.cnt : 0,
-    }))
-    .sort((a, b) => b.median_occupancy - a.median_occupancy);
+  // Room type stats — computed citywide from listings in the pipeline (true median, nulls skipped)
+  const room_type_stats = roomCity.map(r => ({
+    name:             r.room_type,
+    listings:         r.listing_count     || 0,
+    rated:            r.rated_count       || 0,
+    median_occupancy: r.median_occupancy  ?? 0,
+    avg_rating:       r.avg_rating        ?? 0,
+    avg_rpm:          r.reviews_per_month ?? 0,
+  }));
 
   // Property type stats
   const property_type_stats = propTypes.map(p => ({
@@ -545,52 +536,36 @@ function buildAmenity() {
   });
 }
 
-// ─── Room type multi-metric bar ───────────────────────────────────────────────
+// ─── Room type comparison ─────────────────────────────────────────────────────
+// Plain HTML bars with real values. Each metric has its own fixed scale
+// (occupancy out of 365 nights, rating out of 5) so bar length means something.
 function buildRoomStats() {
-  const ctx  = document.getElementById('roomStats');
   const rows = DATA.room_type_stats;
+  const maxRpm = Math.ceil(Math.max(...rows.map(r => r.avg_rpm), 1));
+  const SMALL_SAMPLE = 100;
   const metrics = [
-    { key: 'median_occupancy', label: 'Median occupancy', color: '#F5D547' },
-    { key: 'avg_rating',       label: 'Avg rating',       color: COLORS.Q1 },
-    { key: 'avg_rpm',          label: 'Avg rev/mo',       color: COLORS.Q3 },
+    { key: 'median_occupancy', label: 'Median occupancy', scale: 'nights / yr, of 365', max: 365,    color: '#F5D547', fmt: v => `${Math.round(v)}` },
+    { key: 'avg_rating',       label: 'Avg rating',       scale: 'out of 5',            max: 5,      color: COLORS.Q1, fmt: v => v.toFixed(2) },
+    { key: 'avg_rpm',          label: 'Reviews / month',  scale: `avg, 0–${maxRpm}`,    max: maxRpm, color: COLORS.Q3, fmt: v => v.toFixed(2) },
   ];
-  const maxs = metrics.map(m => Math.max(...rows.map(r => r[m.key])));
-  const datasets = metrics.map((m, i) => ({
-    label: m.label,
-    data: rows.map(r => maxs[i] ? (r[m.key] / maxs[i]) * 100 : 0),
-    backgroundColor: m.color,
-    _raw: rows.map(r => r[m.key]),
-    _key: m.key,
-    borderWidth: 0,
-  }));
-
-  charts.roomStats = new Chart(ctx, {
-    type: 'bar',
-    data: { labels: rows.map(r => r.name), datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { grid: { display: false }, ticks: { color: TEXT_2 } },
-        y: { grid: { color: LINE }, ticks: { color: TEXT_2, callback: v => v + '%' }, max: 100 },
-      },
-      plugins: {
-        legend: { position: 'bottom', labels: { color: TEXT_2, boxWidth: 10, boxHeight: 10, padding: 12 } },
-        tooltip: {
-          backgroundColor: '#000', borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
-          callbacks: {
-            label: i => {
-              const raw = i.dataset._raw[i.dataIndex];
-              const key = i.dataset._key;
-              const fmt = key === 'median_occupancy' ? `${Math.round(raw)} nights/yr`
-                        : key === 'avg_rating'       ? raw.toFixed(2) + ' / 5'
-                        : raw.toFixed(2);
-              return `${i.dataset.label}: ${fmt}`;
-            },
-          },
-        },
-      },
-    },
-  });
+  const head = `
+    <div class="rs-row rs-head">
+      <div></div>
+      ${metrics.map(m => `<div class="rs-metric-head"><span>${m.label}</span><span class="rs-scale">${m.scale}</span></div>`).join('')}
+    </div>`;
+  const body = rows.map(r => `
+    <div class="rs-row">
+      <div class="rs-name">
+        <div>${r.name}</div>
+        <div class="rs-count">${fmtInt(r.listings)} listings${r.listings < SMALL_SAMPLE ? ' · <span class="rs-flag">small sample</span>' : ''}</div>
+      </div>
+      ${metrics.map(m => `
+        <div class="rs-cell" title="${m.label}: ${m.fmt(r[m.key])}${m.key === 'avg_rating' ? ` (${fmtInt(r.rated)} rated listings)` : ''}">
+          <span class="rs-value">${m.fmt(r[m.key])}</span>
+          <div class="rs-track"><div class="rs-fill" style="width:${Math.min(r[m.key] / m.max, 1) * 100}%;background:${m.color}"></div></div>
+        </div>`).join('')}
+    </div>`).join('');
+  document.getElementById('roomStats').innerHTML = head + body;
 }
 
 // ─── Property type bubble ─────────────────────────────────────────────────────
@@ -866,10 +841,11 @@ function updateFilterViews() {
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
-  const [nbhds, monthly, roomTypes, amenities, propTypes, leaderboardRows, medians, geo] = await Promise.all([
+  const [nbhds, monthly, roomTypes, roomCity, amenities, propTypes, leaderboardRows, medians, geo] = await Promise.all([
     fetchTable('neighbourhoods',    'select=*'),
     fetchTable('monthly_totals',    'select=*&order=month.asc'),  // pre-aggregated, ~32 rows
     fetchTable('room_type_stats',   'select=*&limit=5000'),
+    fetchTable('room_type_citywide','select=*&order=listing_count.desc'),
     fetchTable('amenity_stats',     'select=*&order=prevalence_pct.desc&limit=500'),
     fetchTable('property_type_stats','select=*&order=listing_count.desc'),
     fetchTable('leaderboards',      'select=*&order=rank.asc'),
@@ -877,7 +853,7 @@ async function boot() {
     fetch('rawdata_new/neighbourhoods.geojson').then(r => r.json()),
   ]);
 
-  DATA = buildDataObject(nbhds, monthly, roomTypes, amenities, propTypes, leaderboardRows, medians);
+  DATA = buildDataObject(nbhds, monthly, roomTypes, roomCity, amenities, propTypes, leaderboardRows, medians);
   GEO  = geo;
 
   // Populate inline medians display

@@ -237,6 +237,32 @@ body {
 .leaflet-tooltip-left:before,
 .leaflet-tooltip-right:before { display: none; }
 
+/* Room type comparison */
+.room-stats { display: flex; flex-direction: column; }
+.rs-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) repeat(3, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.rs-row:last-child { border-bottom: none; }
+.rs-head { padding-top: 0; align-items: end; }
+.rs-metric-head { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--text); }
+.rs-scale { font-size: 11px; color: var(--text-2); }
+.rs-name { font-size: 13px; color: var(--text); }
+.rs-count { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.rs-flag { color: #F5D547; }
+.rs-cell { display: flex; flex-direction: column; gap: 6px; }
+.rs-track { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.rs-fill { height: 100%; border-radius: 4px; }
+.rs-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text);
+}
+
 /* Focus card */
 .card-focus { background: var(--surface); }
 
@@ -429,4 +455,9 @@ body {
   .qmatrix { grid-template-columns: 80px 1fr 1fr; }
   .hero-title { font-size: 24px; }
   .card-head { flex-direction: column; align-items: stretch; }
+}
+@media (max-width: 600px) {
+  .rs-row { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .rs-head > div:first-child { display: none; }
+  .rs-name { grid-column: 1 / -1; }
 }

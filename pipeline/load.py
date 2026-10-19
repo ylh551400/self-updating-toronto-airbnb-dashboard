@@ -24,7 +24,7 @@ UPSERT_ON = {
 }
 
 # Tables with auto-increment id → delete-all then bulk-insert (simpler & idempotent)
-DELETE_INSERT = {"monthly_activity", "room_type_stats", "leaderboards"}
+DELETE_INSERT = {"monthly_activity", "room_type_stats", "room_type_citywide", "leaderboards"}
 
 # Load order: tables referenced by FK must come first
 LOAD_ORDER = [
@@ -33,6 +33,7 @@ LOAD_ORDER = [
     "monthly_activity",
     "monthly_totals",
     "room_type_stats",
+    "room_type_citywide",
     "amenity_stats",
     "property_type_stats",
     "leaderboards",
