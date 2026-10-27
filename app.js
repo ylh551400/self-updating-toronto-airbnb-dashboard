@@ -23,15 +23,25 @@ const QUADRANT_LABELS = {
   Q3: 'Hidden Gem',    // low  occupancy + high rating
   Q4: 'Struggling',    // low  occupancy + low  rating
 };
-const TEXT = '#EDEDED', TEXT_2 = '#888888', LINE = '#222222';
+// Chart and map colours are read from the CSS variables of the active theme
+let TEXT, TEXT_2, LINE, TIP_BG, OCC, MAP_EDGE, MAP_EMPTY;
+function readThemeColors() {
+  const css = getComputedStyle(document.documentElement);
+  const v = name => css.getPropertyValue(name).trim();
+  TEXT = v('--text'); TEXT_2 = v('--text-2'); LINE = v('--line');
+  TIP_BG = v('--tip-bg'); OCC = v('--occ');
+  MAP_EDGE = v('--bg'); MAP_EMPTY = v('--surface-2');
+  Chart.defaults.color = TEXT_2;
+  Chart.defaults.borderColor = LINE;
+}
+const currentTheme = () => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
 
-Chart.defaults.color = TEXT_2;
 Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
 Chart.defaults.font.size = 12;
-Chart.defaults.borderColor = LINE;
+readThemeColors();
 
 // ─── Global state ────────────────────────────────────────────────────────────
-const state = { active: new Set(['Q1','Q2','Q3','Q4']), mapMode: 'quadrant', highlightNb: null };
+const state = { active: new Set(['Q1','Q2','Q3','Q4']), mapMode: 'quadrant', highlightNb: null, trendScope: 'monthly' };
 let DATA = null, GEO = null, charts = {}, mapLayer = null, map = null;
 const nbByName = {};
 
@@ -327,7 +337,7 @@ function buildScatter() {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#000', borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2, padding: 10,
+          backgroundColor: TIP_BG, borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2, padding: 10,
           callbacks: {
             title: (items) => items[0].raw.nb.name,
             label: (item) => {
@@ -388,7 +398,7 @@ function buildRooms() {
       plugins: {
         legend: { position: 'bottom', labels: { color: TEXT_2, boxWidth: 10, boxHeight: 10, padding: 12 } },
         tooltip: {
-          backgroundColor: '#000', borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
+          backgroundColor: TIP_BG, borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
           callbacks: { label: i => `${i.dataset.label}: ${i.parsed.y.toFixed(1)}%` },
         },
       },
@@ -430,7 +440,7 @@ function buildRadar() {
       plugins: {
         legend: { position: 'bottom', labels: { color: TEXT_2, boxWidth: 10, boxHeight: 10, padding: 12 } },
         tooltip: {
-          backgroundColor: '#000', borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
+          backgroundColor: TIP_BG, borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
           callbacks: {
             label: i => {
               const raw = i.dataset._raw[i.dataIndex];
@@ -460,7 +470,7 @@ function updateQuadrantVisibility() {
 // Plain HTML bars with real values. Each metric has its own fixed scale
 // (occupancy out of 365 nights, rating out of 5) so bar length means something.
 const BAR_METRICS = {
-  occupancy: { key: 'median_occupancy', label: 'Median occupancy', scale: 'nights / yr, of 365', max: () => 365, color: '#F5D547', fmt: v => `${Math.round(v)}` },
+  occupancy: { key: 'median_occupancy', label: 'Median occupancy', scale: 'nights / yr, of 365', max: () => 365, color: 'var(--occ)', fmt: v => `${Math.round(v)}` },
   rating:    { key: 'avg_rating',       label: 'Avg rating',       scale: 'out of 5',            max: () => 5,   color: COLORS.Q1, fmt: v => v.toFixed(2) },
   rpm:       { key: 'avg_rpm',          label: 'Reviews / month',  max: rows => Math.ceil(Math.max(...rows.map(r => r.avg_rpm), 1)),
                scale: max => `avg, 0–${max}`, color: COLORS.Q3, fmt: v => v.toFixed(2) },
@@ -525,7 +535,7 @@ function buildPropType() {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#000', borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
+          backgroundColor: TIP_BG, borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
           callbacks: {
             title: items => items[0].raw.p.name,
             label: i => {
@@ -557,17 +567,15 @@ function buildPropType() {
 }
 
 // ─── Trend chart ──────────────────────────────────────────────────────────────
+function trendDataFor(scope) {
+  const t = DATA.trend;
+  if (scope === 'quarterly') return { labels: t.quarters, reviews: t.quarterly_reviews, listings: t.quarterly_supply, occupancy: t.quarterly_occupancy };
+  return { labels: t.months, reviews: t.reviews, listings: t.supply, occupancy: t.occupancy };
+}
+
 function buildTrend() {
   const ctx = document.getElementById('trend');
-  const t   = DATA.trend;
-  let scope = 'monthly';
-
-  function dataFor(s) {
-    if (s === 'quarterly') return { labels: t.quarters, reviews: t.quarterly_reviews, listings: t.quarterly_supply, occupancy: t.quarterly_occupancy };
-    return { labels: t.months, reviews: t.reviews, listings: t.supply, occupancy: t.occupancy };
-  }
-
-  const d0 = dataFor(scope);
+  const d0  = trendDataFor(state.trendScope);
   charts.trend = new Chart(ctx, {
     type: 'line',
     data: {
@@ -575,7 +583,7 @@ function buildTrend() {
       datasets: [
         { label: 'Reviews', data: d0.reviews, borderColor: COLORS.Q1, backgroundColor: COLORS.Q1 + '22', fill: true, tension: 0.25, borderWidth: 1.5, pointRadius: 0, yAxisID: 'y' },
         { label: 'Active listings', data: d0.listings, borderColor: COLORS.Q3, backgroundColor: 'transparent', tension: 0.25, borderWidth: 1.5, pointRadius: 0, yAxisID: 'y1' },
-        { label: 'Avg occupancy', data: d0.occupancy.map(v => v * 100), borderColor: '#F5D547', backgroundColor: 'transparent', borderDash: [4,3], tension: 0.25, borderWidth: 1.5, pointRadius: 0, yAxisID: 'y2' },
+        { label: 'Avg occupancy', data: d0.occupancy.map(v => v * 100), borderColor: OCC, backgroundColor: 'transparent', borderDash: [4,3], tension: 0.25, borderWidth: 1.5, pointRadius: 0, yAxisID: 'y2' },
       ],
     },
     options: {
@@ -592,19 +600,22 @@ function buildTrend() {
       plugins: {
         legend: { position: 'bottom', labels: { color: TEXT_2, boxWidth: 10, boxHeight: 10, padding: 12 } },
         tooltip: {
-          backgroundColor: '#000', borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
+          backgroundColor: TIP_BG, borderColor: LINE, borderWidth: 1, titleColor: TEXT, bodyColor: TEXT_2,
           callbacks: { label: i => i.dataset.label === 'Avg occupancy' ? `Avg occupancy: ${i.parsed.y.toFixed(1)}%` : `${i.dataset.label}: ${fmtInt(Math.round(i.parsed.y))}` },
         },
       },
     },
   });
 
+}
+
+function wireTrendScope() {
   document.querySelectorAll('#trend-scope button').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('#trend-scope button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      scope = btn.dataset.scope;
-      const d = dataFor(scope);
+      state.trendScope = btn.dataset.scope;
+      const d = trendDataFor(state.trendScope);
       charts.trend.data.labels = d.labels;
       charts.trend.data.datasets[0].data = d.reviews;
       charts.trend.data.datasets[1].data = d.listings;
@@ -660,8 +671,7 @@ function renderLeaderboards() {
 function buildMap() {
   map = L.map('map', { zoomControl: true, attributionControl: false, preferCanvas: true })
     .setView([43.705, -79.4], 11);
-  const cartoKey = CARTO_KEY ? `?key=${encodeURIComponent(CARTO_KEY)}` : '';
-  L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png${cartoKey}`, { maxZoom: 18 }).addTo(map);
+  setBasemap();
   L.control.attribution({ position: 'bottomright', prefix: false }).addAttribution('© OSM © CARTO').addTo(map);
 
   drawNeighbourhoods();
@@ -676,10 +686,27 @@ function buildMap() {
   });
 }
 
+let tileLayer = null;
+function setBasemap() {
+  const cartoKey = CARTO_KEY ? `?key=${encodeURIComponent(CARTO_KEY)}` : '';
+  const style = currentTheme() === 'light' ? 'light_all' : 'dark_all';
+  if (tileLayer) map.removeLayer(tileLayer);
+  tileLayer = L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}.png${cartoKey}`, { maxZoom: 18 }).addTo(map);
+  tileLayer.bringToBack();
+}
+
+// Dark theme: high values are brighter. Light theme: high values are darker.
 const RAMPS = {
-  occupancy: ['#1A1A2E','#2E3A5F','#3B6AA0','#5BA6C4','#B9D99C','#F5D547'],
-  rating:    ['#3A3A3A','#5A4A48','#8A5450','#BC5A56','#E8625C','#FF8A7A'],
-  density:   ['#D8E6F2','#9FBDDB','#6A8EC0','#40649E','#1E3F78','#0A1F4A'],
+  dark: {
+    occupancy: ['#1A1A2E','#2E3A5F','#3B6AA0','#5BA6C4','#B9D99C','#F5D547'],
+    rating:    ['#3A3A3A','#5A4A48','#8A5450','#BC5A56','#E8625C','#FF8A7A'],
+    density:   ['#D8E6F2','#9FBDDB','#6A8EC0','#40649E','#1E3F78','#0A1F4A'],
+  },
+  light: {
+    occupancy: ['#F4F1DE','#E6DE9C','#B9D99C','#6FBFA8','#3B8FB0','#2E4A8F'],
+    rating:    ['#F3ECEA','#EFCFC9','#E8A398','#DE7468','#C94A3F','#9E2F27'],
+    density:   ['#D8E6F2','#9FBDDB','#6A8EC0','#40649E','#1E3F78','#0A1F4A'],
+  },
 };
 function rampColor(stops, t) {
   t = Math.max(0, Math.min(1, t));
@@ -710,18 +737,19 @@ function styleFor(feature) {
   const n    = nbByName[name];
   const dim  = !n || !isActive(n.quadrant);
   const hi   = state.highlightNb === name;
-  let fill = '#222';
+  const ramps = RAMPS[currentTheme()];
+  let fill = MAP_EMPTY;
   if (n) {
     if      (state.mapMode === 'quadrant')   fill = COLORS[n.quadrant];
-    else if (state.mapMode === 'occupancy')  fill = rampColor(RAMPS.occupancy, occupancyRank.get(name) ?? 0);
-    else if (state.mapMode === 'rating')     fill = rampColor(RAMPS.rating,    ratingRank.get(name)    ?? 0);
-    else if (state.mapMode === 'density')    fill = rampColor(RAMPS.density,   densityRank.get(name)   ?? 0);
+    else if (state.mapMode === 'occupancy')  fill = rampColor(ramps.occupancy, occupancyRank.get(name) ?? 0);
+    else if (state.mapMode === 'rating')     fill = rampColor(ramps.rating,    ratingRank.get(name)    ?? 0);
+    else if (state.mapMode === 'density')    fill = rampColor(ramps.density,   densityRank.get(name)   ?? 0);
   }
   const opaque = state.mapMode !== 'quadrant';
   return {
     fillColor:   fill,
     fillOpacity: dim ? 0.08 : (hi ? 0.95 : (opaque ? 0.88 : 0.65)),
-    color:       hi ? TEXT : '#0A0A0A',
+    color:       hi ? TEXT : MAP_EDGE,
     weight:      hi ? 1.8 : 0.6,
   };
 }
@@ -773,6 +801,34 @@ function updateFilterViews() {
   updateMapStyles();
 }
 
+// ─── Theme ───────────────────────────────────────────────────────────────────
+// Canvas charts bake colours in when built, so a theme change rebuilds them.
+const CHART_BUILDERS = { scatter: buildScatter, rooms: buildRooms, radar: buildRadar, propType: buildPropType, trend: buildTrend };
+
+function applyTheme(theme) {
+  if (theme === 'light') document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem('theme', theme); } catch (e) {}
+  syncThemeToggle();
+  readThemeColors();
+  if (!DATA) return;
+  Object.entries(CHART_BUILDERS).forEach(([key, build]) => { charts[key]?.destroy(); build(); });
+  updateQuadrantVisibility();
+  if (map) { setBasemap(); updateMapStyles(); }
+}
+
+function syncThemeToggle() {
+  const label = document.getElementById('theme-toggle-label');
+  if (label) label.textContent = currentTheme() === 'light' ? 'Dark mode' : 'Light mode';
+}
+
+function wireThemeToggle() {
+  syncThemeToggle();
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
+  });
+}
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
   const [nbhds, monthly, roomTypes, roomCity, amenityBins, propTypes, leaderboardRows, medians, geo] = await Promise.all([
@@ -818,10 +874,12 @@ async function boot() {
   buildRoomStats();
   buildPropType();
   buildTrend();
+  wireTrendScope();
   buildMap();
   renderLeaderboards();
 }
 
+wireThemeToggle();
 boot().catch(e => {
   console.error(e);
   document.body.insertAdjacentHTML('afterbegin',
